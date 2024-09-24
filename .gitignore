@@ -1,0 +1,20 @@
+# Node-related
+*.log
+*.log.*
+node_modules/
+
+# Build output
+dist/
+out/
+
+# Figma plugin files
+code.js
+*.code.js
+*.json
+
+# Manifest.json
+manifest.json
+
+# Ignore package-lock.json to avoid lock-in of dependencies
+package-lock.json
+

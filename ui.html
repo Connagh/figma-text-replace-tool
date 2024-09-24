@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    /* Updated styles */
+    body {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    #content {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+    }
+
+    #dataset-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+
+    #dataset-index {
+      margin: 0 10px;
+    }
+
+    #helper-text {
+      margin-top: 10px;
+      font-size: 14px;
+      color: black;
+    }
+
+    #helper-text a {
+      color: #DC0032;
+      text-decoration: none;
+    }
+
+    #helper-text a:hover {
+      text-decoration: underline;
+    }
+
+    /* Table container for scrolling */
+    #table-container {
+      max-height: 250px;
+      overflow-y: auto;
+      display: none;
+      position: relative;
+    }
+
+    #preview-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      border-radius: 4px;
+      overflow: hidden;
+      table-layout: fixed;
+    }
+
+    #preview-table th,
+    #preview-table td {
+      border: 1px solid #ccc;
+      padding: 5px;
+      text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      width: 50%;
+    }
+
+    /* Make header row sticky */
+    #preview-table thead th {
+      position: sticky;
+      top: 0;
+      background-color: #f2f2f2;
+      z-index: 1;
+    }
+
+    /* Alternate row colors */
+    #preview-table tbody tr:nth-child(odd) {
+      background-color: #ffffff;
+    }
+
+    #preview-table tbody tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+
+    #filename {
+      margin-top: 10px;
+      font-size: 12px;
+      color: gray;
+      text-align: left;
+      padding-left: 10px;
+    }
+
+    #controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px;
+      border-top: 1px solid #ccc;
+    }
+
+    #left-buttons {
+      display: flex;
+      gap: 10px;
+    }
+
+    #right-button {
+      display: flex;
+    }
+
+    button {
+      padding: 8px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      border-radius: 4px;
+      border: none;
+    }
+
+    /* Style for the 'Start' button */
+    #start {
+      background-color: #DC0032;
+      color: #fff;
+    }
+
+    /* Style for the 'Import JSON', 'Export JSON', and 'Unload JSON' buttons */
+    .outlined-button {
+      background-color: transparent;
+      color: #DC0032;
+      border: 2px solid #DC0032;
+    }
+
+    #prev,
+    #next {
+      margin: 0 5px;
+    }
+  </style>
+</head>
+<body>
+  <div id="content">
+    <!-- Dataset controls -->
+    <div id="dataset-controls" style="display: none;">
+      <button id="prev">&larr;</button>
+      <span id="dataset-index">Please import a .json file</span>
+      <button id="next">&rarr;</button>
+    </div>
+    <!-- Helper text -->
+    <div id="helper-text" style="display: block;">
+      Please import a .json file. An example file can be found <a href="#" id="download-example">here</a>.
+    </div>
+    <!-- Table container with scrolling -->
+    <div id="table-container">
+      <table id="preview-table">
+        <thead>
+          <tr>
+            <th>Tag</th>
+            <th>Data</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </div>
+  <!-- Filename display moved to left -->
+  <div id="filename"></div>
+  <div id="controls">
+    <div id="left-buttons">
+      <button id="import" class="outlined-button">
+        Import JSON
+      </button>
+      <button id="export" class="outlined-button">
+        Export JSON
+      </button>
+      <button id="unload" class="outlined-button">
+        Unload JSON
+      </button>
+    </div>
+    <div id="right-button">
+      <button id="start">Start</button>
+    </div>
+  </div>
+
+  <script>
+    // Notify the plugin code that the UI is ready
+    parent.postMessage({ pluginMessage: { type: 'ui-ready' } }, '*');
+
+    // Example JSON data embedded as a string
+    const exampleJsonData = `[
+      {
+        "tag": "@name",
+        "data": ["John Smith", "Sarah Brown", "Sam Brown"]
+      },
+      {
+        "tag": "@email",
+        "data": ["john@example.com", "sarah@example.com", "sam@example.com"]
+      },
+      {
+        "tag": "@company",
+        "data": ["Example Corp", "Company Inc", "Sample LLC"]
+      },
+      {
+        "tag": "@note",
+        "data": ["Note for John", "Note for Sarah", "Note for Sam"]
+      }
+    ]`;
+
+    let currentDatasetIndex = 0;
+    let totalDatasets = 0;
+    let tagData = [];
+    let filename = '';
+
+    // Handle download of example.json
+    document.getElementById('download-example').onclick = function(event) {
+      event.preventDefault();
+      const dataStr = exampleJsonData;
+      const blob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'example.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    // Import JSON
+    document.getElementById('import').onclick = () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json';
+      input.onchange = (e) => {
+        const file = e.target.files[0];
+        filename = file.name;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const jsonText = event.target.result;
+            if (!jsonText) {
+              alert('JSON file is empty.');
+              return;
+            }
+
+            // New validation for JSON format and data integrity
+            const parsedData = JSON.parse(jsonText);
+            if (!Array.isArray(parsedData) || parsedData.length === 0) {
+              throw new Error('Invalid JSON format. Expected a non-empty array.');
+            }
+
+            // Validate each entry in the JSON array
+            parsedData.forEach((entry) => {
+              if (
+                !entry.hasOwnProperty('tag') ||
+                typeof entry.tag !== 'string' ||
+                !Array.isArray(entry.data)
+              ) {
+                throw new Error('Invalid JSON entry format.');
+              }
+            });
+
+            tagData = parsedData;
+            totalDatasets = tagData[0].data.length;
+            currentDatasetIndex = 0;
+
+            parent.postMessage(
+              { pluginMessage: { type: 'import-json', tagData, filename } },
+              '*'
+            );
+          } catch (error) {
+            console.error('JSON Parsing/Validation Error:', error);
+            alert('Invalid JSON file. Error: ' + error.message);
+          }
+        };
+        reader.readAsText(file);
+      };
+      input.click();
+    };
+
+    // Export JSON
+    document.getElementById('export').onclick = () => {
+      parent.postMessage({ pluginMessage: { type: 'export-json' } }, '*');
+    };
+
+    // Unload JSON
+    document.getElementById('unload').onclick = () => {
+      if (confirm('Are you sure you want to unload the current JSON file?')) {
+        parent.postMessage({ pluginMessage: { type: 'unload-json' } }, '*');
+      }
+    };
+
+    // Navigation buttons
+    document.getElementById('next').onclick = () => {
+      parent.postMessage({ pluginMessage: { type: 'next-dataset' } }, '*');
+    };
+
+    document.getElementById('prev').onclick = () => {
+      parent.postMessage({ pluginMessage: { type: 'prev-dataset' } }, '*');
+    };
+
+    // Start processing
+    document.getElementById('start').onclick = () => {
+      parent.postMessage({ pluginMessage: { type: 'start' } }, '*');
+    };
+
+    // Handle messages from the plugin code
+    onmessage = (event) => {
+      const msg = event.data.pluginMessage;
+      if (msg.type === 'update-dataset-index') {
+        currentDatasetIndex = msg.index;
+        totalDatasets = msg.total || 0;
+        tagData = msg.tagData || [];
+        filename = msg.filename || '';
+
+        if (totalDatasets === 0) {
+          document.getElementById('dataset-controls').style.display = 'none';
+          document.getElementById('helper-text').style.display = 'block';
+          document.getElementById('dataset-index').innerText =
+            'Please import a .json file. An example file can be found here.';
+          document.getElementById('table-container').style.display = 'none';
+          document.getElementById('filename').innerText = '';
+        } else {
+          document.getElementById('dataset-controls').style.display = 'flex';
+          document.getElementById('dataset-index').innerText = `Dataset: ${
+            currentDatasetIndex + 1
+          }/${totalDatasets}`;
+          document.getElementById('helper-text').style.display = 'none';
+          document.getElementById('table-container').style.display = 'block';
+          document.getElementById('filename').innerText = `.json file loaded: ${filename}`;
+          updatePreviewTable();
+        }
+      } else if (msg.type === 'save-json') {
+        const dataStr = JSON.stringify(msg.tagData, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        let exportFilename = msg.filename || 'tags.json';
+        if (!exportFilename.endsWith('.json')) {
+          exportFilename += '.json';
+        }
+        a.download = exportFilename;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    };
+
+    function updatePreviewTable() {
+      const tbody = document.getElementById('table-body');
+      tbody.innerHTML = '';
+
+      for (const entry of tagData) {
+        const tag = entry.tag;
+        const dataValue = entry.data[currentDatasetIndex] || '...';
+
+        const row = document.createElement('tr');
+
+        const tagCell = document.createElement('td');
+        tagCell.textContent = tag;
+        row.appendChild(tagCell);
+
+        const dataCell = document.createElement('td');
+        dataCell.textContent = dataValue;
+        row.appendChild(dataCell);
+
+        tbody.appendChild(row);
+      }
+    }
+  </script>
+</body>
+</html>
