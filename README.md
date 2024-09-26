@@ -1,1 +1,0 @@
-# figma-text-replace-tool
